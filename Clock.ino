@@ -1,37 +1,3 @@
-/*
- * 3D printed smart shelving with a giant hidden digital clock in the front edges of the shelves - DIY Machines
-
-==========
-
-More info and build instructions: https://www.youtube.com/watch?v=8E0SeycTzHw
-
-3D printed parts can be downloaded from here: https://www.thingiverse.com/thing:4207524
-
-You will need to install the Adafruit Neopixel library which can be found in the library manager.
-
-This project also uses the handy DS3231 Simple library:- https://github.com/sleemanj/DS3231_Simple   Please follow the instruction on installing this provided on the libraries page
-
-Before you install this code you need to set the time on your DS3231. Once you have connected it as shown in this project and have installed the DS3231_Simple library (see above) you
- to go to  'File' >> 'Examples' >> 'DS3231_Simple' >> 'Z1_TimeAndDate' >> 'SetDateTime' and follow the instructions in the example to set the date and time on your RTC
-
-==========
-
-
- * SAY THANKS:
-
-Buy me a coffee to say thanks: https://ko-fi.com/diymachines
-Support us on Patreon: https://www.patreon.com/diymachines
-
-SUBSCRIBE:
-■ https://www.youtube.com/channel/UC3jc4X-kEq-dEDYhQ8QoYnQ?sub_confirmation=1
-
-INSTAGRAM: https://www.instagram.com/diy_machines/?hl=en
-FACEBOOK: https://www.facebook.com/diymachines/
-
-*/
-
-
-
 
 #include <EEPROM.h>
 #include <Adafruit_NeoPixel.h>
@@ -45,13 +11,20 @@ DS3231_Simple Clock;
 DateTime MyDateAndTime;
 
 // Which pin on the Arduino is connected to the NeoPixels?
-#define LEDCLOCK_PIN    6
+#define LEDCLOCK_PIN        6
 #define LEDDOWNLIGHT_PIN    5
-
-int ledPerSegment = 10;
+#define ledPerSegment       10
+ 
 // How many NeoPixels are attached to the Arduino?
 #define LEDCLOCK_COUNT 230  // This should be = 23 * ledPerSegment
 #define LEDDOWNLIGHT_COUNT 12
+
+const byte hourPin = 10,
+          minPin = 9,
+          colorPin = 7,
+          lightIntensityPin = 8;
+const short colorChangeInterval = 6000; // 5 * 60 * 1000 / 50 = 5 min at delay(50) 
+short colorChangeCounter = -1;
 
 //(red * 65536) + (green * 256) + blue ->for 32-bit merged colour value so 16777215 equals white
 // or 3 hex byte 00 -> ff for RGB eg 0x123456 for red=12(hex) green=34(hex), and green=56(hex) 
@@ -59,13 +32,41 @@ int ledPerSegment = 10;
 uint32_t clockMinuteColour ; // pure red 
 uint32_t clockHourColour ;   // pure green
 
-const int colourCount = 10;
-//                                   Pure Red, Pure Green , Redish    , White     , Golden    , Green     , Golden        , Golden Green , Peach      , White              
-uint32_t hourColors[colourCount] = { 0x800000, 0x008000   , 0xFC4445  , 0xFFFFFF  , 0xFCCD04  , 0x86C232  , 0xFAED26      , 0xA4A71E     , 0xF4976C   , 0xFFFFFF }; 
-//                                 pure green, pure red   , Greenish  , Blue      , Blue      , Pink      , Greanish Blue , Pink         , Light Blue , White
-uint32_t minColors[colourCount] =  { 0x008000, 0x800000   , 0x5CDB95  , 0x84CEEB  , 0x84CEEB  , 0xF172A1  , 0x3B945E      , 0xF79E02     , 0xD2FDFF   , 0xFFFFFF };
+const short colorCount = 16;
+uint32_t colors[colorCount] = {
+   0xFF0000   //0   Pure Red      
+  ,0x00FF00   //1   Pure Green    
+  ,0x0000FF   //2   Pure Blue
+  ,0xFFFFFF   //3   White
+  ,0xFFFF00   //4   Yellow
+  ,0x00FFFF   //5   Aqua
+  ,0xFFA500   //6   Orange
+  ,0xFF3A40   //7
+  ,0xFF1E76   //8
+  ,0xFF00FF   //9
+  ,0xFB4A21   //10
+  ,0xFCF133   //11
+  ,0x69FF46   //12 Neon green
+  ,0x3A90E5   //13 Neon Blue 
+  ,0xFF6731   //14 Orange
+  ,0xFFCD00   //15 Yellow
+  };
+ const byte colorPresetCount = 10; 
+ byte colorsPreset[colorPresetCount+1][2] = {
+      {0,0}
+    , {6,5}
+    , {0,1}
+    , {3,3}
+    , {2,3}
+    , {1,3}
+    , {4,2}
+    , {2,4}
+    , {5,5}
+    , {5,6}
+    , {1,0}
+  };
 
-int clockFaceBrightness = 0;
+
 
 // Declare our NeoPixel objects:
 Adafruit_NeoPixel stripClock(LEDCLOCK_COUNT, LEDCLOCK_PIN, NEO_GRB + NEO_KHZ800);
@@ -81,34 +82,28 @@ Adafruit_NeoPixel stripDownlighter(LEDDOWNLIGHT_COUNT, LEDDOWNLIGHT_PIN, NEO_GRB
 
 
 //Smoothing of the readings from the light sensor so it is not too twitchy
-const int numReadings = 12;
+const short numReadings = 12;
 
-int readings[numReadings];      // the readings from the analog input
-int readIndex = 0;              // the index of the current reading
+short readings[numReadings];      // the readings from the analog input
+short readIndex = 0;              // the index of the current reading
 long total = 0;                  // the running total
 long average = 0;                // the average
-
-
-int hourPin = 10,
-    minPin = 9,
-    colorPin = 7,
-    lightIntensityPin = 8,
-    colorAddress = 0,
+short clockFaceBrightness = 0;
+ 
+short colorAddress = 0,
     lightIntensityAddress = 1;
 
-
-int colorIndex = 0,
+short colorIndex = 0,
     brightnessFactor;
 
-int debugCnt;
 
-String debugMsg;
+short memCnt;
 
-
-
+int loopCounter = 0;
 void setup() {
+  
   // put your setup code here, to run once:
- 
+   
   pinMode(hourPin, INPUT_PULLUP);  //Set hours
   pinMode(minPin, INPUT_PULLUP);  //Set Mins
   pinMode(colorPin, INPUT_PULLUP);  //Set Color
@@ -119,32 +114,32 @@ void setup() {
 
   stripClock.begin();           // INITIALIZE NeoPixel stripClock object (REQUIRED)
   stripClock.show();            // Turn OFF all pixels ASAP
-  stripClock.setBrightness(240); // Set inital BRIGHTNESS (max = 255)
- 
+  stripClock.setBrightness(220); // Set inital BRIGHTNESS (max = 255) 
 
   stripDownlighter.begin();           // INITIALIZE NeoPixel stripClock object (REQUIRED)
   stripDownlighter.show();            // Turn OFF all pixels ASAP
-  stripDownlighter.setBrightness(50); // Set BRIGHTNESS (max = 255)
+  stripDownlighter.setBrightness(120); // Set BRIGHTNESS (max = 255)
+  stripDownlighter.fill(0xFFF1E6, 0, LEDDOWNLIGHT_COUNT);
+  stripDownlighter.show();
+
 
   //smoothing
-    // initialize all the readings to 0:
+  // initialize all the readings to 0:
   for (int thisReading = 0; thisReading < numReadings; thisReading++) {
     readings[thisReading] = 0;
   }
- 
-  debugCnt=0;
-  debugMsg = "";
+  
+  memCnt=-1;
   brightnessFactor = 2;
 
   //Read EEPROM for color and light intensity value
   colorIndex = EEPROM.read(colorAddress);
-  if(colorIndex >= colourCount)
+  if(colorIndex >= colorPresetCount)
   {
     colorIndex = 0;  
   }
   Serial.println("Color Index from EEPROM: " + String(colorIndex));
-  clockMinuteColour = minColors[colorIndex] ;
-  clockHourColour =  hourColors[colorIndex] ;
+  setClockColors();
   
   brightnessFactor = EEPROM.read(lightIntensityAddress);
   if(brightnessFactor > 5)
@@ -152,14 +147,31 @@ void setup() {
     brightnessFactor = 0;  
   }
   Serial.println("brightness Factor from EEPROM: " + String(brightnessFactor));
-
-  
 }
 
+void setClockColors(){
+  if(colorChangeCounter == -1){
+    clockMinuteColour = colors[colorsPreset[colorIndex][0]];
+    clockHourColour   = colors[colorsPreset[colorIndex][1]];
+
+    if(colorIndex == 0){
+      colorChangeCounter = 0;  
+    }
+  }
+  if(colorChangeCounter < colorChangeInterval){
+    colorChangeCounter++;
+  }
+  else{
+    clockHourColour = GetRandomColor();
+    clockMinuteColour = GetRandomColor();
+    colorChangeCounter = 0;
+  }
+  //else{
+  //  clockMinuteColour = colors[colorsPreset[colorIndex][0]];
+  //  clockHourColour   = colors[colorsPreset[colorIndex][1]];
+  //}
+}
 void loop() {
-  debugCnt++;
- 
-  
   //read the time
   readTheTime();
 
@@ -188,29 +200,24 @@ void loop() {
   //Set Color
   if(digitalRead(colorPin) == LOW){
     colorIndex++;
-    if(colorIndex >= colourCount){
+    colorChangeCounter = -1;
+    if(colorIndex >= colorPresetCount){
       colorIndex = 0;
     }
-    clockMinuteColour = minColors[colorIndex];
-    clockHourColour =  hourColors[colorIndex];
-    EEPROM.update(colorAddress, colorIndex);
+    memCnt=0;
+    Serial.println("Color Index: " + String(colorIndex));
     delay(200);
   }
-
+  
   //Set Bightness
   if(digitalRead(lightIntensityPin) == LOW){
     brightnessFactor++;
     if(brightnessFactor > 5){
       brightnessFactor = 0;
     }
-    EEPROM.update(lightIntensityAddress, brightnessFactor);
+    memCnt=0;
     delay(200);
   }
-   
-
-  //display the time on the LEDs
-  displayTheTime();
-
 
   //Record a reading from the light sensor and add it to the array
   readings[readIndex] = analogRead(A0); //get an average light level from previouse set of samples
@@ -223,7 +230,7 @@ void loop() {
     // ...wrap around to the beginning:
     readIndex = 0;
   }
-
+  
   //now work out the sum of all the values in the array
   int sumBrightness = 0;
   for (int i=0; i < numReadings; i++)
@@ -237,34 +244,37 @@ void loop() {
   int lightSensorValue = sumBrightness / numReadings;
   //Serial.print("Average light sensor value = ");
   //Serial.println(lightSensorValue);
-
-
-  //set the brightness based on ambiant light levels
-  clockFaceBrightness = map(lightSensorValue,50, 1000, 25 + (brightnessFactor * 45) , 10 + (brightnessFactor * 0)); 
-  stripClock.setBrightness(clockFaceBrightness); // Set brightness value of the LEDs
-  Serial.println("Light Sensor value = " + String(lightSensorValue) + " | Brigtness Factor: " + String(brightnessFactor) + " | LED Brightness:"  + String(clockFaceBrightness));
   
+  if(loopCounter%50==0){
+    setClockColors();
+
+    //set the brightness based on ambiant light levels
+    clockFaceBrightness = map(lightSensorValue,50, 1000, 25 + (brightnessFactor * 40) , 10 + (brightnessFactor * 0)); 
+    stripClock.setBrightness(clockFaceBrightness); // Set brightness value of the LEDs
+    //Serial.println("Light Sensor value = " + String(lightSensorValue) + " | Brigtness Factor: " + String(brightnessFactor) + " | LED Brightness:"  + String(clockFaceBrightness));
+
+    //display the time on the LEDs
+    displayTheTime();
+  }
   
-  stripClock.show();
-   
-  stripDownlighter.fill(0xFFF1E6, 0, LEDDOWNLIGHT_COUNT);
-  stripDownlighter.show();
+  if(memCnt > 500){
+    EEPROM.update(lightIntensityAddress, brightnessFactor);
+    EEPROM.update(colorAddress, colorIndex);
+    Serial.println("EEPROM Set: ColorAddress=" + String(colorIndex) + " | Brigtness=" + String(brightnessFactor));
+    memCnt=-1;
+  } 
+  else if(memCnt != -1){
+    memCnt++;
+  }
 
   //delay(5000);   //this 5 second delay to slow things down during testing
-  //delay(500);
+  delay(10);
+  loopCounter++;
 }
 
-
-void debug(String val){
-  if(debugCnt>100){
-    Serial.println(val);
-    debugCnt = 0;
-  }
-  else{
-    debugMsg = debugMsg + "\n" + val;
-  }
+uint32_t GetRandomColor(){
+  return colors[random(0, colorCount)];  
 }
-
 
 void readTheTime(){
   // Ask the clock for the data.
@@ -272,7 +282,7 @@ void readTheTime(){
   
   //String date = String(MyDateAndTime.Year) + "/" + String(MyDateAndTime.Month) + "/" + String(MyDateAndTime.Day);
   //String timeV = String(MyDateAndTime.Hour) + ":" + String(MyDateAndTime.Minute) + ":" + String(MyDateAndTime.Second);
-  //debug("DateTime is: " + date + " " + timeV + " | Color Index: " + String(colorIndex)); 
+  //Serial.println("DateTime is: " + date + " " + timeV + " | Color Index: " + String(colorIndex)); 
 }
   
 
@@ -301,13 +311,17 @@ void displayTheTime(){
   if (secondHourDigit == 0){
     secondHourDigit = 12;
   }
- if (secondHourDigit > 12){
+  if (secondHourDigit > 12){
     secondHourDigit = secondHourDigit - 12;
   }
-    if (secondHourDigit > 9){
+  if (secondHourDigit > 9){
       stripClock.fill(clockHourColour,ledPerSegment * 21, ledPerSegment * 2); 
-    }
   }
+  stripClock.show();
+
+  stripDownlighter.fill(0xFFF1E6, 0, LEDDOWNLIGHT_COUNT);
+  stripDownlighter.show();  
+}
 
 
 void displayNumber(int digitToDisplay, int offsetBy, uint32_t colourToUse){
