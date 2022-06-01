@@ -251,6 +251,7 @@ void loop() {
     //set the brightness based on ambiant light levels
     clockFaceBrightness = map(lightSensorValue,50, 1000, 25 + (brightnessFactor * 40) , 10 + (brightnessFactor * 0)); 
     stripClock.setBrightness(clockFaceBrightness); // Set brightness value of the LEDs
+    stripDownlighter.setBrightness(map(clockFaceBrightness, 1, 250, 250, 1)); // Set brightness value of the LEDs
     //Serial.println("Light Sensor value = " + String(lightSensorValue) + " | Brigtness Factor: " + String(brightnessFactor) + " | LED Brightness:"  + String(clockFaceBrightness));
 
     //display the time on the LEDs
@@ -268,7 +269,7 @@ void loop() {
   }
 
   //delay(5000);   //this 5 second delay to slow things down during testing
-  delay(10);
+  //delay(10);
   loopCounter++;
 }
 
