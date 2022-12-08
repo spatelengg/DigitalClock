@@ -1,4 +1,4 @@
-
+#include <avr/wdt.h>
 #include <EEPROM.h>
 #include <Adafruit_NeoPixel.h>
 #ifdef __AVR__
@@ -147,6 +147,7 @@ void setup() {
     brightnessFactor = 0;  
   }
   Serial.println("brightness Factor from EEPROM: " + String(brightnessFactor));
+  wdt_enable(WDTO_2S);
 }
 
 void setClockColors(){
@@ -169,10 +170,12 @@ void setClockColors(){
   //else{
   //  clockMinuteColour = colors[colorsPreset[colorIndex][0]];
   //  clockHourColour   = colors[colorsPreset[colorIndex][1]];
-  //}
+  //}  
 }
+
 void loop() {
   //read the time
+  wdt_reset();
   readTheTime();
 
   //Set Hours
@@ -218,9 +221,9 @@ void loop() {
     memCnt=0;
     delay(200);
   }
-
+/*
   //Record a reading from the light sensor and add it to the array
-  readings[readIndex] = analogRead(A0); //get an average light level from previouse set of samples
+  readings[readIndex] = 500; //analogRead(A0); //get an average light level from previouse set of samples
   //Serial.print("Light sensor value added to array = ");
   //Serial.println(readings[readIndex]);
   readIndex = readIndex + 1; // advance to the next position in the array:
@@ -242,14 +245,19 @@ void loop() {
 
   // and calculate the average: 
   int lightSensorValue = sumBrightness / numReadings;
+  
   //Serial.print("Average light sensor value = ");
   //Serial.println(lightSensorValue);
   
-  if(loopCounter%50==0){
+*/
+
+  if(loopCounter%100==0)
+  {
     setClockColors();
 
     //set the brightness based on ambiant light levels
-    clockFaceBrightness = map(lightSensorValue,50, 1000, 25 + (brightnessFactor * 40) , 10 + (brightnessFactor * 0)); 
+    //clockFaceBrightness = map(lightSensorValue,50, 1000, 25 + (brightnessFactor * 40) , 10 + (brightnessFactor * 0)); 
+    clockFaceBrightness = map(brightnessFactor,0, 5, 25, 200); 
     stripClock.setBrightness(clockFaceBrightness); // Set brightness value of the LEDs
     stripDownlighter.setBrightness(map(clockFaceBrightness, 1, 250, 250, 1)); // Set brightness value of the LEDs
     //Serial.println("Light Sensor value = " + String(lightSensorValue) + " | Brigtness Factor: " + String(brightnessFactor) + " | LED Brightness:"  + String(clockFaceBrightness));
